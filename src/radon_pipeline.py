@@ -19,7 +19,8 @@ import math
 
 def _theta_from_angles(angles: Union[int, Iterable[float]]) -> np.ndarray:
     if isinstance(angles, int):
-        return np.linspace(0., 300., angles, endpoint=False)
+        # angles number of samples from 0 to 360 degrees
+        return np.linspace(0., 360., angles, endpoint=False)
     return np.asarray(list(angles), dtype=float)
 
 
@@ -81,8 +82,8 @@ def naive_radon(img: np.ndarray, theta: np.ndarray) -> np.ndarray:
     max_dist = int(math.ceil(np.hypot((W - 1) / 2.0, (H - 1) / 2.0)))
     proj_len = 2 * max_dist + 1
         
-        # Initialize output which is grey
-    sinogram = np.ones((proj_len, len(theta)), dtype=np.float32)
+        # Initialize output which starts with zeros (black background)
+    sinogram = np.zeros((proj_len, len(theta)), dtype=np.float32)
     # center coordinates
     # assuming the rotation center is at the image center
     a_x = (W - 1) / 2.0
@@ -101,7 +102,7 @@ def naive_radon(img: np.ndarray, theta: np.ndarray) -> np.ndarray:
     proj_len = s_bins.size
 
     thetas = np.deg2rad(theta)
-    sinogram = np.zeros((proj_len, thetas.size), dtype=np.float32)
+    sinogram = np.ones((thetas.size, proj_len), dtype=np.float32)
 
     # For each angle, compute projection by binning pixel contributions
     for j, t in enumerate(thetas):
@@ -129,36 +130,43 @@ def naive_radon(img: np.ndarray, theta: np.ndarray) -> np.ndarray:
                     # For RGB images, we need to handle each channel separately
                     # This is within the single-channel _naive_radon_2d function,
                     # so we just accumulate the single pixel value as before
+                    # Skip white pixels (assuming white is close to [255, 255, 255] or high values)
+                    pixel_rgb = img[i, k, :]
+                    if np.all(pixel_rgb >= 240):  # Adjust threshold as needed
+                        continue
+                    
                     for channel_index in range(3):
+                        pixel_value = img[i, k, channel_index]
                         # that is red channel logic
+                        intensity_threshold = 250
                         if channel_index == 0:
                             # check if the pixel value is 255,0,0
-                            pixel_value = img[i, k, channel_index]
-                            if pixel_value == 255:
-                                sinogram[bin_idx, j] = 0 # blacken the bin
+                            if pixel_value > intensity_threshold:
+                                # print("updated red channel")
+                                sinogram[j, bin_idx] = 0 # blacken the bin
                             else:
                                 pass
                         # that is green channel logic
                         elif channel_index == 1:
-                            # For that, we should check if the angle of the rotation is close
-                            # enough to the gletz angle as given as an argument
-                            gletz_angle = 30
-                            Threshold = 40 # degrees
-                            gletz_angle = np.deg2rad(gletz_angle)
-                            Threshold = np.deg2rad(Threshold)
-                            if abs(theta[j] - gletz_angle) < Threshold:
-                                # the pixel should be greyed
-                                pixel_value = 0.5
-                            else:
-                                pass
+
+                            if pixel_value > intensity_threshold:
+                                # For that, we should check if the angle of the rotation is close
+                                # enough to the gletz angle as given as an argument
+                                gletz_angle = 30
+                                Threshold = 40 # degrees
+                                gletz_angle = np.deg2rad(gletz_angle)
+                                Threshold = np.deg2rad(Threshold)
+                                if abs(theta[j] - gletz_angle) < Threshold:
+                                    # the pixel should be greyed
+                                    sinogram[j, bin_idx] = 0.5
+                                else:
+                                    pass
                         # that is blue channel logic
                         elif channel_index == 2:
                             # as the blue pixel is white, we do nothing
                             pass
-
-        return sinogram
-    else:
-        raise ValueError(f"Unsupported image shape: {img.shape}. Expected 2D or 3D RGB image.")
+    
+    return sinogram
 
 
     
